@@ -277,7 +277,7 @@ class DrawingLayer extends Drawer
     else if agentType is 'link'
       @stampLink(stamp)
 
-  _drawLine: ({ rgb:color, size, penMode }) => ({ x1, y1, x2, y2 }) =>
+  drawLine: ({ rgb:color, size, penMode, fromX:x1, fromY:y1, toX:x2, toY:y2 }) =>
     if penMode isnt 'up'
       penColor = if penMode is 'erase' then @clearColor else color
 
@@ -297,16 +297,11 @@ class DrawingLayer extends Drawer
         @ctx.restore()
       , @ctx)
 
-  drawWrappedLine: (penTrail) ->
-    { fromX, fromY, toX, toY, wrappedInX, wrappedInY } = penTrail
-
-    @turtleDrawer.linkDrawer.getWrappedLines(fromX, fromY, toX, toY, wrappedInX, wrappedInY).forEach(@_drawLine(penTrail))
-
   draw: () ->
     @events.forEach((event) =>
       switch event.type
         when 'clear-drawing' then @clearDrawing()
-        when 'line'          then @drawWrappedLine(event)
+        when 'line'          then @drawLine(event)
         when 'stamp-image'   then @drawStamp(event)
     )
 
