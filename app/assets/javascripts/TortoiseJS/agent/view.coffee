@@ -95,9 +95,7 @@ class View
     ctx.oImageSmoothingEnabled = false
     ctx.msImageSmoothingEnabled = false
 
-  usePatchCoordinates: (drawFn, ctx) ->
-    if not ctx? then ctx = @ctx
-
+  usePatchCoordinates: (ctx = @ctx) => (drawFn) =>
     ctx.save()
     w = @canvas.width
     h = @canvas.height
@@ -109,6 +107,12 @@ class View
                      -(@minpxcor-.5) * w / @worldWidth, (@maxpycor+.5) * h / @worldHeight)
     drawFn()
     ctx.restore()
+
+  withCompositing: (gco, ctx = @ctx) -> (drawFn) ->
+    oldGCO = ctx.globalCompositeOperation
+    ctx.globalCompositeOperation = gco
+    drawFn()
+    ctx.globalCompositeOperation = oldGCO
 
   offsetX: -> @worldCenterX - @centerX
   offsetY: -> @worldCenterY - @centerY
@@ -261,15 +265,22 @@ class DrawingLayer extends Drawer
 
   stampTurtle: (turtleStamp) ->
     mockTurtleObject = @makeMockTurtleObject(turtleStamp)
-    @view.usePatchCoordinates(() =>
-      @turtleDrawer.drawTurtle(mockTurtleObject, @ctx, isStamp = true)
-    , @ctx)
+    @view.usePatchCoordinates(@ctx)( =>
+      @view.withCompositing(@compositingOperation(turtleStamp.stampMode), @ctx)( =>
+        @turtleDrawer.drawTurtle(mockTurtleObject, @ctx, true)
+      )
+    )
 
   stampLink: (linkStamp) ->
     mockLinkObject = @makeMockLinkObject(linkStamp)
-    @view.usePatchCoordinates(() =>
-      @turtleDrawer.linkDrawer.draw(mockLinkObject..., @wrapX, @wrapY, @ctx, isStamp = true)
-    , @ctx)
+    @view.usePatchCoordinates(@ctx)( =>
+      @view.withCompositing(@compositingOperation(linkStamp.stampMode), @ctx)( =>
+        @turtleDrawer.linkDrawer.draw(mockLinkObject..., @wrapX, @wrapY, @ctx, true)
+      )
+    )
+
+  compositingOperation: (mode) ->
+    if mode is 'erase' then 'destination-out' else 'source-over'
 
   drawStamp: ({ agentType, stamp }) ->
     if agentType is 'turtle'
@@ -279,9 +290,9 @@ class DrawingLayer extends Drawer
 
   drawLine: ({ rgb:color, size, penMode, fromX:x1, fromY:y1, toX:x2, toY:y2 }) =>
     if penMode isnt 'up'
-      penColor = if penMode is 'erase' then @clearColor else color
+      penColor = color
 
-      @view.usePatchCoordinates(() =>
+      @view.usePatchCoordinates(@ctx)( =>
         @ctx.save()
 
         @ctx.strokeStyle = @rgbToCss(penColor)
@@ -292,10 +303,12 @@ class DrawingLayer extends Drawer
         @ctx.moveTo(x1, y1)
         @ctx.lineTo(x2, y2)
 
-        @ctx.stroke()
+        @view.withCompositing(@compositingOperation(penMode), @ctx)( =>
+          @ctx.stroke()
+        )
 
         @ctx.restore()
-      , @ctx)
+      )
 
   draw: () ->
     @events.forEach((event) =>
@@ -392,7 +405,7 @@ class SpotlightDrawer extends Drawer
       [agent.midpointx, agent.midpointy, agent.size]
 
   repaint: (model) ->
-    @view.usePatchCoordinates( =>
+    @view.usePatchCoordinates()( =>
       watched = @view.watch(model)
       if watched?
         [xcor, ycor, size] = @dimensions(watched)
@@ -445,7 +458,7 @@ class TurtleDrawer extends Drawer
       @turtleShapeDrawer = new CachingShapeDrawer(world.turtleshapelist)
     if world.linkshapelist isnt @linkDrawer.shapes and world.linkshapelist?
       @linkDrawer = new LinkDrawer(@view, world.linkshapelist)
-    @view.usePatchCoordinates( =>
+    @view.usePatchCoordinates()( =>
       for id, link of links
         end1 = turtles[link.end1]
         end2 = turtles[link.end2]
@@ -490,7 +503,7 @@ class PatchDrawer
     @view.ctx.drawImage(@scratchCanvas, 0, 0, @view.canvas.width, @view.canvas.height)
 
   labelPatches: (patches) ->
-    @view.usePatchCoordinates( =>
+    @view.usePatchCoordinates()( =>
       for ignore, patch of patches
         @view.drawLabel(patch.pxcor + .5, patch.pycor - .5, patch.plabel, patch['plabel-color'])
     )
